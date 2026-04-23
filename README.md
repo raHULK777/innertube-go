@@ -46,7 +46,7 @@ scratch in idiomatic Go.
 ## Installation
 
 ```bash
-go get github.com/slick/innertube-go
+go get github.com/raHULK777/innertube-go
 ```
 
 Requires **Go 1.22+**.
