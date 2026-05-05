@@ -27,45 +27,45 @@ type clientConfig struct {
 var clientConfigs = map[ClientType]clientConfig{
 	ClientWeb: {
 		Name:        "WEB",
-		Version:     "2.20231121.08.00",
+		Version:     "2.20240726.00.00",
 		APIKey:      "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
-		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Platform:    "DESKTOP",
 		OriginalURL: baseURL,
 	},
 	ClientWebMusic: {
 		Name:        "WEB_REMIX",
-		Version:     "1.20231120.03.01",
+		Version:     "1.20240724.00.00",
 		APIKey:      "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30",
-		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Platform:    "DESKTOP",
 		OriginalURL: musicURL,
 	},
 	ClientAndroid: {
 		Name:      "ANDROID",
-		Version:   "19.09.37",
+		Version:   "19.29.37",
 		APIKey:    "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w",
-		UserAgent: "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
+		UserAgent: "com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip",
 		OSName:    "Android",
-		OSVersion: "11",
+		OSVersion: "14",
 		Platform:  "MOBILE",
 	},
 	ClientAndroidMusic: {
 		Name:      "ANDROID_MUSIC",
-		Version:   "6.21.52",
+		Version:   "7.27.52",
 		APIKey:    "AIzaSyAOghZGza2MQSZkY_zfZ370N-PUdXEo8AI",
-		UserAgent: "com.google.android.apps.youtube.music/6.21.52 (Linux; U; Android 11) gzip",
+		UserAgent: "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14) gzip",
 		OSName:    "Android",
-		OSVersion: "11",
+		OSVersion: "14",
 		Platform:  "MOBILE",
 	},
 	ClientIOS: {
 		Name:      "IOS",
-		Version:   "19.09.3",
+		Version:   "19.29.1",
 		APIKey:    "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
-		UserAgent: "com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)",
+		UserAgent: "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)",
 		OSName:    "iPhone",
-		OSVersion: "15.6",
+		OSVersion: "17.5.1.21F90",
 		Platform:  "MOBILE",
 	},
 	ClientTVEmbedded: {
@@ -103,12 +103,22 @@ func (c *Client) buildContext(ct ClientType) map[string]interface{} {
 	if cfg.OriginalURL != "" {
 		clientMap["originalUrl"] = cfg.OriginalURL
 	}
+	// Required for Android client — without this YouTube rejects the request
+	if ct == ClientAndroid || ct == ClientAndroidMusic {
+		clientMap["androidSdkVersion"] = 34  // Android 14
+	}
 
 	ctx := map[string]interface{}{
 		"client": clientMap,
 	}
 
-	// Inject user data if authenticated
+	// TV embedded requires a thirdParty embed context or YouTube rejects it
+	if ct == ClientTVEmbedded {
+		ctx["thirdParty"] = map[string]interface{}{
+			"embedUrl": "https://www.youtube.com",
+		}
+	}
+
 	c.mu.RLock()
 	creds := c.credentials
 	c.mu.RUnlock()

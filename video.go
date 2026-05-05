@@ -17,9 +17,9 @@ func (c *Client) GetVideoDetails(videoID string) (*VideoDetails, error) {
 // GetVideoDetailsCtx is GetVideoDetails with context.
 func (c *Client) GetVideoDetailsCtx(ctx context.Context, videoID string) (*VideoDetails, error) {
 	payload := map[string]interface{}{
-		"videoId":            videoID,
-		"racyCheckOk":        true,
-		"contentCheckOk":     true,
+		"videoId":        videoID,
+		"racyCheckOk":    true,
+		"contentCheckOk": true,
 		"playbackContext": map[string]interface{}{
 			"contentPlaybackContext": map[string]interface{}{
 				"signatureTimestamp": 19369,
@@ -27,9 +27,23 @@ func (c *Client) GetVideoDetailsCtx(ctx context.Context, videoID string) (*Video
 		},
 	}
 
-	raw, err := c.request(ctx, epPlayer, ClientTVEmbedded, payload)
-	if err != nil {
-		return nil, err
+	// Try clients in order — YouTube periodically blocks specific client versions
+	var raw map[string]interface{}
+	var lastErr error
+	for _, ct := range []ClientType{ClientTVEmbedded, ClientAndroid, ClientIOS, ClientWeb} {
+		raw, lastErr = c.request(ctx, epPlayer, ct, payload)
+		if lastErr != nil {
+			continue
+		}
+		status := digStr(raw, "playabilityStatus", "status")
+		if status == "OK" || status == "LIVE_STREAM_OFFLINE" {
+			break
+		}
+		reason := digStr(raw, "playabilityStatus", "reason")
+		lastErr = fmt.Errorf("%w: %s", ErrVideoUnavailable, reason)
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	// Also fetch /next for additional metadata (likes, comments, related)
@@ -38,7 +52,6 @@ func (c *Client) GetVideoDetailsCtx(ctx context.Context, videoID string) (*Video
 	}
 	nextRaw, err := c.request(ctx, epNext, ClientWeb, nextPayload)
 	if err != nil {
-		// Non-fatal: we can still return player data
 		nextRaw = nil
 	}
 
@@ -55,6 +68,7 @@ func (c *Client) GetStreamingData(videoID string, opts *StreamOptions) (*Streami
 	return c.GetStreamingDataCtx(context.Background(), videoID, opts)
 }
 
+// GetStreamingDataCtx is GetStreamingData with context.
 // GetStreamingDataCtx is GetStreamingData with context.
 func (c *Client) GetStreamingDataCtx(ctx context.Context, videoID string, opts *StreamOptions) (*StreamingData, error) {
 	if opts == nil {
@@ -73,15 +87,24 @@ func (c *Client) GetStreamingDataCtx(ctx context.Context, videoID string, opts *
 		},
 	}
 
-	// Use Android client for format URLs that don't need cipher decoding
-	raw, err := c.request(ctx, epPlayer, ClientAndroid, payload)
-	if err != nil {
-		return nil, err
-	}
-
-	if status := digStr(raw, "playabilityStatus", "status"); status != "OK" {
+	// Try Android first (direct URLs, no cipher), fall back to iOS then TV embedded
+	var raw map[string]interface{}
+	var lastErr error
+	for _, ct := range []ClientType{ClientAndroid, ClientIOS, ClientTVEmbedded} {
+		raw, lastErr = c.request(ctx, epPlayer, ct, payload)
+		if lastErr != nil {
+			continue
+		}
+		status := digStr(raw, "playabilityStatus", "status")
+		if status == "OK" || status == "LIVE_STREAM_OFFLINE" {
+			lastErr = nil
+			break
+		}
 		reason := digStr(raw, "playabilityStatus", "reason")
-		return nil, fmt.Errorf("%w: %s", ErrVideoUnavailable, reason)
+		lastErr = fmt.Errorf("%w: %s", ErrVideoUnavailable, reason)
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	formats, err := parseFormats(raw)
